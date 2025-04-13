@@ -1,0 +1,15 @@
+(t=0) proc 0 arrived
+(t=0) running proc 0
+(t=10) proc 1 arrived
+(t=20) running proc 1
+(t=30) proc 2 arrived
+(t=40) running proc 2
+(t=50) proc 3 arrived
+(t=70) proc 4 arrived
+(t=70) idle
+(t=70) running proc 3
+(t=75) proc 5 arrived
+(t=80) running proc 4
+(t=100) running proc 5
+(t=110) idle
+Finished at time 110

@@ -1,0 +1,4 @@
+(t=0) proc 0 arrived
+(t=0) running proc 0
+(t=100) idle
+Finished at time 100

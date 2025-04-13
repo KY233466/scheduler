@@ -1,0 +1,20 @@
+(t=0) proc 0 arrived
+(t=0) running proc 0
+(t=1) proc 1 arrived
+(t=1) running proc 1
+(t=3) proc 1 blocked for I/O
+(t=3) running proc 0
+(t=4) proc 2 arrived
+(t=4) running proc 2
+(t=5) proc 2 blocked for I/O
+(t=5) running proc 0
+(t=7) proc 0 blocked for I/O
+(t=7) idle
+(t=8) proc 2 finished I/O
+(t=8) running proc 2
+(t=9) proc 1 finished I/O
+(t=10) running proc 1
+(t=12) proc 0 finished I/O
+(t=14) running proc 0
+(t=17) idle
+Finished at time 17

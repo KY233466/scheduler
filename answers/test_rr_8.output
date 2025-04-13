@@ -1,0 +1,12 @@
+(t=0) proc 0 arrived
+(t=0) running proc 0
+(t=100) proc 0 blocked for I/O
+(t=100) idle
+(t=300) proc 0 finished I/O
+(t=300) running proc 0
+(t=600) proc 0 blocked for I/O
+(t=600) idle
+(t=900) proc 0 finished I/O
+(t=900) running proc 0
+(t=1100) idle
+Finished at time 1100

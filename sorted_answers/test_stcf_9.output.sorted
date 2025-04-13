@@ -1,0 +1,18 @@
+Finished at time 18
+(t=0) proc 0 arrived
+(t=0) running proc 0
+(t=10) proc 2 finished I/O
+(t=10) running proc 2
+(t=13) running proc 1
+(t=14) proc 0 finished I/O
+(t=14) running proc 0
+(t=15) running proc 1
+(t=2) proc 0 blocked for I/O
+(t=3) proc 1 arrived
+(t=3) running proc 1
+(t=6) proc 1 blocked for I/O
+(t=6) proc 2 arrived
+(t=6) running proc 2
+(t=8) proc 2 blocked for I/O
+(t=9) proc 1 finished I/O
+(t=9) running proc 1
