@@ -1,100 +1,135 @@
 #include "scheduler.h"
+#include <stdlib.h>
 #include <assert.h>
-
-/********************
- * STRIDE Scheduler *
- ********************/
-
+#include <limits.h>
 
 #define STRIDE_CONSTANT 1000000
+#define MAX_PID 32768
 
+typedef struct stride_proc {
+    const struct process* proc;
+    unsigned long stride;
+    unsigned long pass;
+    struct stride_proc* next;
+} stride_proc_t;
 
-/* sched_init
- *   will be called exactly once before any processes arrive or any other events
- */
+static stride_proc_t* ready_list = NULL;
+static stride_proc_t* pid_map[MAX_PID];
+
+// Create and register a new stride_proc
+static stride_proc_t* create_stride_proc(const struct process* proc) {
+    stride_proc_t* sp = (stride_proc_t*)malloc(sizeof(stride_proc_t));
+    sp->proc = proc;
+    sp->stride = STRIDE_CONSTANT / proc->tickets;
+    sp->pass = 0;
+    sp->next = NULL;
+    pid_map[proc->pid] = sp;
+    return sp;
+}
+
+// Sorted insert into ready_list by pass value
+static void add_to_ready_list(stride_proc_t* sp) {
+    if (!ready_list || sp->pass < ready_list->pass) {
+        sp->next = ready_list;
+        ready_list = sp;
+        return;
+    }
+    stride_proc_t* curr = ready_list;
+    while (curr->next && curr->next->pass <= sp->pass) {
+        curr = curr->next;
+    }
+    sp->next = curr->next;
+    curr->next = sp;
+}
+
+// Remove a process from the ready list
+static void remove_from_ready_list(pid_t pid) {
+    stride_proc_t** curr = &ready_list;
+    while (*curr) {
+        if ((*curr)->proc->pid == pid) {
+            stride_proc_t* to_remove = *curr;
+            *curr = (*curr)->next;
+            to_remove->next = NULL;
+            return;
+        }
+        curr = &(*curr)->next;
+    }
+}
+
+// Only switch if necessary
+static void schedule_next() {
+    if (!ready_list) return;
+    pid_t current = get_current_proc();
+    pid_t next = ready_list->proc->pid;
+    if (current != next) {
+        context_switch(next);
+    }
+}
+
+// Increment pass for the given process
+static void update_pass(pid_t pid) {
+    stride_proc_t* sp = pid_map[pid];
+    if (sp) {
+        sp->pass += sp->stride;
+    }
+}
+
 void sched_init() {
-  use_time_slice(TRUE);
-  // TODO: implement this
+    use_time_slice(TRUE);
+    for (int i = 0; i < MAX_PID; ++i) {
+        pid_map[i] = NULL;
+    }
 }
 
-
-/* sched_new_process
- *   will be called when a new process arrives (i.e., fork())
- *
- * proc - the new process that just arrived
- */
 void sched_new_process(const struct process* proc) {
-  assert(READY == proc->state);
-  // TODO: implement this
+    assert(READY == proc->state);
+    stride_proc_t* sp = create_stride_proc(proc);
+    add_to_ready_list(sp);
+    if (get_current_proc() == -1) {
+        schedule_next();
+    }
 }
 
-
-/* sched_finished_time_slice
- *   will be called when the currently running process finished a time slice
- *   (This is only called when the time slice ends with time remaining in the
- *   current CPU burst.  If finishing the time slice happens at the same time
- *   that the process blocks / terminates,
- *   then sched_blocked() / sched_terminated() will be called instead).
- *
- * proc - the process whose time slice just ended
- *
- * Note: Time slice end events only occur if use_time_slice() is set to TRUE
- */
 void sched_finished_time_slice(const struct process* proc) {
-  assert(READY == proc->state);
-  // TODO: implement this
+    assert(READY == proc->state);
+    update_pass(proc->pid);
+    remove_from_ready_list(proc->pid);
+    add_to_ready_list(pid_map[proc->pid]);
+    schedule_next();
 }
 
-
-/* sched_blocked
- *   will be called when the currently running process blocks
- *   (e.g., if it starts an I/O operation that it needs to wait to finish
- *
- * proc - the process that just blocked
- */
 void sched_blocked(const struct process* proc) {
-  assert(BLOCKED == proc->state);
-  // TODO: implement this
+    assert(BLOCKED == proc->state);
+    update_pass(proc->pid);
+    remove_from_ready_list(proc->pid);
+    schedule_next();
 }
 
-
-/* sched_unblocked
- *   will be called when a blocked process unblocks
- *   (e.g., if its I/O operation finished)
- *
- * proc - the process that just unblocked
- */
 void sched_unblocked(const struct process* proc) {
-  assert(READY == proc->state);
-  // TODO: implement this
+    assert(READY == proc->state);
+    stride_proc_t* sp = pid_map[proc->pid];
+    assert(sp != NULL);
+    add_to_ready_list(sp);
+    if (get_current_proc() == -1) {
+        schedule_next();
+    }
 }
 
-
-/* sched_terminated
- *   will be called when the currently running process terminates
- *   (i.e., it finished it's last CPU burst)
- *
- * proc - the process that just terminated
- *
- * Note: "kill" commands and other ways to terminate a process that is not
- *       currently running are not being simulated, so only the currently running
- *       process can actually terminate.
- */
 void sched_terminated(const struct process* proc) {
-  assert(TERMINATED == proc->state);
-  // TODO: implement this
+    assert(TERMINATED == proc->state);
+    update_pass(proc->pid);
+    remove_from_ready_list(proc->pid);
+    free(pid_map[proc->pid]);
+    pid_map[proc->pid] = NULL;
+    schedule_next();
 }
 
-
-/* sched_cleanup
- *   will be called exactly once after all processes have terminated and there
- *   are no more events left to occur, just before the simulation exits
- *
- * Note: Calling sched_cleanup() is guaranteed if the simulation has a normal exit
- *       but is not guaranteed in the case of fatal errors, crashes, or other
- *       abnormal exits.
- */
 void sched_cleanup() {
-  // TODO: implement this
+    for (int i = 0; i < MAX_PID; ++i) {
+        if (pid_map[i]) {
+            free(pid_map[i]);
+            pid_map[i] = NULL;
+        }
+    }
+    ready_list = NULL;
 }
-
