@@ -59,8 +59,11 @@ static void remove_from_ready_list(pid_t pid) {
 // Only switch if necessary
 static void schedule_next() {
     if (!ready_list) return;
-    pid_t current = get_current_proc();
+
     pid_t next = ready_list->proc->pid;
+    if (ready_list->proc->state != READY) return;  // ✅ Prevent bad switch
+
+    pid_t current = get_current_proc();
     if (current != next) {
         context_switch(next);
     }
@@ -91,10 +94,17 @@ void sched_new_process(const struct process* proc) {
 }
 
 void sched_finished_time_slice(const struct process* proc) {
-    assert(READY == proc->state);
-    update_pass(proc->pid);
-    remove_from_ready_list(proc->pid);
-    add_to_ready_list(pid_map[proc->pid]);
+    pid_t pid = proc->pid;
+    stride_proc_t* sp = pid_map[pid];
+    if (!sp) return;
+
+    // Advance pass
+    update_pass(pid);
+
+    // Remove and re-add to ready list (only if it’s still in CPU_BURST)
+    remove_from_ready_list(pid);
+    add_to_ready_list(sp);
+
     schedule_next();
 }
 
@@ -108,8 +118,10 @@ void sched_blocked(const struct process* proc) {
 void sched_unblocked(const struct process* proc) {
     assert(READY == proc->state);
     stride_proc_t* sp = pid_map[proc->pid];
-    assert(sp != NULL);
+    if (!sp) return;
+
     add_to_ready_list(sp);
+
     if (get_current_proc() == -1) {
         schedule_next();
     }
