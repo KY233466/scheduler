@@ -87,6 +87,7 @@ void sched_init() {
 void sched_new_process(const struct process* proc) {
     assert(READY == proc->state);
     stride_proc_t* sp = create_stride_proc(proc);
+    sp->proc = proc;
     add_to_ready_list(sp);
     if (get_current_proc() == -1) {
         schedule_next();
@@ -119,6 +120,8 @@ void sched_unblocked(const struct process* proc) {
     assert(READY == proc->state);
     stride_proc_t* sp = pid_map[proc->pid];
     if (!sp) return;
+
+    sp->proc = proc;  // ✅ Update to current process struct
 
     add_to_ready_list(sp);
 
