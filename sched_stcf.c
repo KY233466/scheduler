@@ -2,6 +2,7 @@
 #include "process.h"
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 typedef struct {
     const struct process **array;
@@ -12,21 +13,26 @@ typedef struct {
 static PriorityQueue *ready_queue = NULL;
 static const struct process *current_proc = NULL;
 
-PriorityQueue *create_queue() {
+static PriorityQueue *create_queue() {
     PriorityQueue *q = malloc(sizeof(PriorityQueue));
+    assert(q);
     q->capacity = 10;
     q->size = 0;
     q->array = malloc(q->capacity * sizeof(const struct process *));
+    assert(q->array);
     return q;
 }
 
-void resize_queue(PriorityQueue *q) {
+static void resize_queue(PriorityQueue *q) {
     q->capacity *= 2;
     q->array = realloc(q->array, q->capacity * sizeof(const struct process *));
+    assert(q->array);
 }
 
-void push(PriorityQueue *q, const struct process *proc) {
-    if (!proc || !proc->current_burst) return;
+static void push(PriorityQueue *q, const struct process *proc) {
+    assert(proc);
+    assert(proc->current_burst);  // Defensive: can't push a proc without bursts
+
     if (q->size == q->capacity) resize_queue(q);
 
     int i = q->size - 1;
@@ -38,15 +44,15 @@ void push(PriorityQueue *q, const struct process *proc) {
     q->size++;
 }
 
-const struct process *peek(PriorityQueue *q) {
+static const struct process *peek(PriorityQueue *q) {
     if (!q || q->size == 0) return NULL;
     return q->array[0];
 }
 
-void remove_process(PriorityQueue *q, const struct process *proc) {
+static void remove_process(PriorityQueue *q, const struct process *proc) {
     if (!q || !proc) return;
     for (int i = 0; i < q->size; i++) {
-        if (q->array[i] == proc) {
+        if (q->array[i]->pid == proc->pid) {
             for (int j = i; j < q->size - 1; j++) {
                 q->array[j] = q->array[j + 1];
             }
@@ -56,69 +62,84 @@ void remove_process(PriorityQueue *q, const struct process *proc) {
     }
 }
 
-void free_queue(PriorityQueue *q) {
+static void free_queue(PriorityQueue *q) {
     if (!q) return;
     free(q->array);
     free(q);
 }
 
-void maybe_schedule() {
+static void schedule_if_needed() {
+    if (!ready_queue) {
+        fprintf(stderr, "ERROR: ready_queue is NULL!\n");
+        exit(1);
+    }
+
     const struct process *next = peek(ready_queue);
     if (!next || !next->current_burst) return;
 
-    if (!current_proc) {
+    pid_t current_pid = get_current_proc();
+
+    // If CPU is idle or our local tracker is NULL or missing a burst
+    if (current_pid == -1 || current_proc == NULL || current_proc->current_burst == NULL) {
         if (context_switch(next->pid) == 0) {
+            // fprintf(stderr, "(debug) switching to proc %d (CPU idle)\n", next->pid);
             current_proc = next;
             remove_process(ready_queue, next);
         }
-    } else if (!current_proc->current_burst || 
-               next->current_burst->remaining_time < current_proc->current_burst->remaining_time) {
-        if (context_switch(next->pid) == 0) {
-            push(ready_queue, current_proc);
-            current_proc = next;
-            remove_process(ready_queue, next);
+    } else {
+        const struct process *current = current_proc;
+
+        if (!current->current_burst || next->current_burst->remaining_time < current->current_burst->remaining_time) {
+            if (context_switch(next->pid) == 0) {
+                // fprintf(stderr, "(debug) preempting proc %d with proc %d\n", current->pid, next->pid);
+                if (current->state == READY) {
+                    push(ready_queue, current);
+                }
+                current_proc = next;
+                remove_process(ready_queue, next);
+            }
         }
     }
 }
 
 void sched_init() {
-    use_time_slice(FALSE);
+    use_time_slice(FALSE); // STCF is non-time-sliced
     ready_queue = create_queue();
     current_proc = NULL;
 }
 
-void sched_new_process(const struct process *proc) {
+void sched_new_process(const struct process* proc) {
     assert(proc && proc->state == READY);
     push(ready_queue, proc);
-    maybe_schedule();
+    schedule_if_needed();
 }
 
-void sched_finished_time_slice(const struct process *proc) {
-    (void)proc;  // Not used in STCF
+void sched_finished_time_slice(const struct process* proc) {
+    (void)proc; // Unused in STCF
 }
 
-void sched_blocked(const struct process *proc) {
+void sched_blocked(const struct process* proc) {
     assert(proc && proc->state == BLOCKED);
     if (proc == current_proc) {
         current_proc = NULL;
     }
     remove_process(ready_queue, proc);
-    maybe_schedule();
+    schedule_if_needed();
 }
 
-void sched_unblocked(const struct process *proc) {
+void sched_unblocked(const struct process* proc) {
     assert(proc && proc->state == READY);
     push(ready_queue, proc);
-    maybe_schedule();
+    schedule_if_needed();
 }
 
-void sched_terminated(const struct process *proc) {
+void sched_terminated(const struct process* proc) {
     assert(proc && proc->state == TERMINATED);
     if (proc == current_proc) {
         current_proc = NULL;
     }
     remove_process(ready_queue, proc);
-    maybe_schedule();
+    schedule_if_needed();
 }
 
 void sched_cleanup() {
